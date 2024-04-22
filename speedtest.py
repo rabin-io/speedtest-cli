@@ -820,13 +820,17 @@ class HTTPDownloader(threading.Thread):
                 while (not event_is_set(self._shutdown_event) and
                         (timeit.default_timer() - self.starttime) <=
                         self.timeout):
-                    self.result.append(len(f.read(10240)))
+                    # read_result = f.read(10240)
+                    read_result = f.read(61347)
+                    self.result.append(len(read_result))
                     if self.result[-1] == 0:
                         break
                 f.close()
-        except IOError:
+        except IOError as e:
+            print(f'Thread {self.name} got IOError: {str(e)}')  
             pass
         except HTTP_ERRORS:
+            print(f'Thread {self.name} got HTTP_ERROR: {str(e)}')  
             pass
 
 
@@ -946,7 +950,7 @@ class SpeedtestResults(object):
     """
 
     def __init__(self, download=0, upload=0, ping=0, server=None, client=None,
-                 opener=None, secure=False):
+                 opener=None, secure=True):
         self.download = download
         self.upload = upload
         self.ping = ping
@@ -957,7 +961,7 @@ class SpeedtestResults(object):
         self.client = client or {}
 
         self._share = None
-        self.timestamp = '%sZ' % datetime.datetime.utcnow().isoformat()
+        self.timestamp = '%sZ' % datetime.datetime.now(datetime.UTC).isoformat()
         self.bytes_received = 0
         self.bytes_sent = 0
 
@@ -1087,7 +1091,7 @@ class Speedtest(object):
     """Class for performing standard speedtest.net testing operations"""
 
     def __init__(self, config=None, source_address=None, timeout=10,
-                 secure=False, shutdown_event=None):
+                 secure=True, shutdown_event=None):
         self.config = {}
 
         self._source_address = source_address
@@ -1552,6 +1556,7 @@ class Speedtest(object):
                 q.put(thread, True)
                 in_flight['threads'] += 1
                 callback(i, request_count, start=True)
+                print(f'started {thread.name} at {timeit.default_timer():.2f}')
 
         finished = []
 
@@ -1564,6 +1569,7 @@ class Speedtest(object):
                 in_flight['threads'] -= 1
                 finished.append(sum(thread.result))
                 callback(thread.i, request_count, end=True)
+                print(f'finished {thread.name} with {sum(thread.result)} bytes at {timeit.default_timer():.2f}')
 
         q = Queue(max_threads)
         prod_thread = threading.Thread(target=producer,
@@ -1770,8 +1776,8 @@ def parse_args():
     parser.add_argument('--source', help='Source IP address to bind to')
     parser.add_argument('--timeout', default=10, type=PARSER_TYPE_FLOAT,
                         help='HTTP timeout in seconds. Default 10')
-    parser.add_argument('--secure', action='store_true',
-                        help='Use HTTPS instead of HTTP when communicating '
+    parser.add_argument('--insecure', action='store_true', default=False,
+                        help='Use HTTP instead of HTTPS when communicating '
                              'with speedtest.net operated servers')
     parser.add_argument('--no-pre-allocate', dest='pre_allocate',
                         action='store_const', default=True, const=False,
@@ -1885,7 +1891,7 @@ def shell():
         speedtest = Speedtest(
             source_address=args.source,
             timeout=args.timeout,
-            secure=args.secure
+            secure=not args.insecure
         )
     except (ConfigRetrievalError,) + HTTP_ERRORS:
         printer('Cannot retrieve speedtest configuration', error=True)
