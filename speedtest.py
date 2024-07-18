@@ -1268,10 +1268,11 @@ class Speedtest(object):
                     )
 
         urls = [
-            '://www.speedtest.net/speedtest-servers-static.php',
-            'http://c.speedtest.net/speedtest-servers-static.php',
-            '://www.speedtest.net/speedtest-servers.php',
-            'http://c.speedtest.net/speedtest-servers.php',
+            'https://www.speedtest.net/api/js/servers?engine=js&limit=10&https_functional=true',
+#            '://www.speedtest.net/speedtest-servers-static.php',
+#            'http://c.speedtest.net/speedtest-servers-static.php',
+#            '://www.speedtest.net/speedtest-servers.php',
+#            'http://c.speedtest.net/speedtest-servers.php',
         ]
 
         headers = {}
@@ -1281,9 +1282,7 @@ class Speedtest(object):
         errors = []
         for url in urls:
             try:
-                request = build_request(
-                    '%s?threads=%s' % (url,
-                                       self.config['threads']['download']),
+                request = build_request( url, #build_request('%s?threads=%s' % (url, self.config['threads']['download']),
                     headers=headers,
                     secure=self._secure
                 )
@@ -1309,49 +1308,28 @@ class Speedtest(object):
                 if int(uh.code) != 200:
                     raise ServersRetrievalError()
 
-                serversxml = ''.encode().join(serversxml_list)
+                serversxml = (''.encode().join(serversxml_list)).decode()
+                serversxml = json.loads(serversxml)
 
                 printer('Servers XML:\n%s' % serversxml, debug=True)
 
-                try:
+                for server in serversxml:
                     try:
-                        try:
-                            root = ET.fromstring(serversxml)
-                        except ET.ParseError:
-                            e = get_exception()
-                            raise SpeedtestServersError(
-                                'Malformed speedtest.net server list: %s' % e
-                            )
-                        elements = etree_iter(root, 'server')
+                        attrib = server
                     except AttributeError:
-                        try:
-                            root = DOM.parseString(serversxml)
-                        except ExpatError:
-                            e = get_exception()
-                            raise SpeedtestServersError(
-                                'Malformed speedtest.net server list: %s' % e
-                            )
-                        elements = root.getElementsByTagName('server')
-                except (SyntaxError, xml.parsers.expat.ExpatError):
-                    raise ServersRetrievalError()
+                        attrib = dict(list(server.items()))
 
-                for server in elements:
-                    try:
-                        attrib = server.attrib
-                    except AttributeError:
-                        attrib = dict(list(server.attributes.items()))
-
-                    if servers and int(attrib.get('id')) not in servers:
+                    if servers and int(attrib['id']) not in servers:
                         continue
 
-                    if (int(attrib.get('id')) in self.config['ignore_servers']
-                            or int(attrib.get('id')) in exclude):
+                    if (int(attrib['id']) in self.config['ignore_servers']
+                            or int(attrib['id']) in exclude):
                         continue
 
                     try:
                         d = distance(self.lat_lon,
-                                     (float(attrib.get('lat')),
-                                      float(attrib.get('lon'))))
+                                     (float(attrib['lat']),
+                                      float(attrib['lon'])))
                     except Exception:
                         continue
 
